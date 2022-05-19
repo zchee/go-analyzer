@@ -15,30 +15,40 @@ import (
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/inspect"
-	"golang.org/x/tools/go/analysis/passes/pkgfact"
 	"golang.org/x/tools/go/ast/inspector"
+
+	"github.com/zchee/go-analyzer/packagefact"
 )
 
-const Doc = `pkgerrors analyzer analyzes and rewrites the github.com/pkg/errors (that has been deprecated) to the fmt.Errorf with %%w verb provided after the go1.13.`
+const Doc = `This analyzer analyzes and rewrites the github.com/pkg/errors (that has been deprecated) to the fmt.Errorf with %w verb provided after the go1.13.`
 
 var Analyzer = &analysis.Analyzer{
 	Name: "pkgerrors",
 	Doc:  Doc,
 	Run:  run,
 	Requires: []*analysis.Analyzer{
-		pkgfact.Analyzer,
+		packagefact.Analyzer,
 		inspect.Analyzer,
 	},
 }
 
-const pkgerrosPath = "github.com/pkg/errors"
+const (
+	errosPath    = "errors"
+	pkgerrosPath = "github.com/pkg/errors"
+)
 
 func run(pass *analysis.Pass) (interface{}, error) {
-	inspected := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
-	nodeFilter := []ast.Node{
-		(*ast.CallExpr)(nil), // filter only function expression
+	for _, fact := range pass.AllPackageFacts() {
+		pass.ImportPackageFact(fact.Package, fact.Fact)
+	}
+	for _, fact := range pass.AllObjectFacts() {
+		pass.ImportObjectFact(fact.Object, fact.Fact)
 	}
 
+	inspected := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
+	nodeFilter := []ast.Node{
+		(*ast.CallExpr)(nil),
+	}
 	inspected.Preorder(nodeFilter, func(node ast.Node) {
 		call := node.(*ast.CallExpr)
 
@@ -54,21 +64,24 @@ func run(pass *analysis.Pass) (interface{}, error) {
 		}
 
 		// make a copy of the function declaration to avoid mutating the AST.
-		// See https://go.dev/issue/46129.
 		callCopy := &ast.CallExpr{}
 		*callCopy = *call
 		callCopy.Args = call.Args
 
+		var category string
 		switch fnName {
 		case "Cause": // errors.Cause
 			callCopy.Fun.(*ast.SelectorExpr).Sel.Name = "Unwrap"
+			category = "Cause"
 
 		case "New": // errors.New
-			// nothing to do
+			// TODO(zchee): supprot replace stdlib errors.New
 			return
 
 		case "Errorf": // errors.Errorf
 			callCopy.Fun.(*ast.SelectorExpr).X.(*ast.Ident).Name = "fmt"
+			callCopy.Args = fixArgs(call.Args)
+			category = "Errorf"
 
 		case "WithStack": // errors.WithStack
 			// not supported
@@ -78,6 +91,7 @@ func run(pass *analysis.Pass) (interface{}, error) {
 			callCopy.Fun.(*ast.SelectorExpr).X.(*ast.Ident).Name = "fmt"
 			callCopy.Fun.(*ast.SelectorExpr).Sel.Name = "Errorf"
 			callCopy.Args = reorderArgs(call.Args)
+			category = fnName
 		}
 
 		var buf bytes.Buffer
@@ -88,7 +102,7 @@ func run(pass *analysis.Pass) (interface{}, error) {
 		pass.Report(analysis.Diagnostic{
 			Pos:      call.Pos(),
 			End:      call.End(),
-			Category: "???", // TODO(zchee): what is category?
+			Category: category,
 			Message:  fmt.Sprintf("found use location of the deprecated %s", pkgerrosPath),
 			SuggestedFixes: []analysis.SuggestedFix{{
 				Message: "Use fmt.Errorf with %%w verb instead",
@@ -102,6 +116,66 @@ func run(pass *analysis.Pass) (interface{}, error) {
 	})
 
 	return nil, nil
+}
+
+func rewriteImport(pass *analysis.Pass, ispec *ast.ImportSpec, imps map[string]bool) {
+	if imps[unquote(ispec.Path.Value)] {
+		return
+	}
+	defer func() {
+		imps[unquote(ispec.Path.Value)] = true
+	}()
+
+	// make a copy of the function declaration to avoid mutating the AST.
+	impCopy := &ast.ImportSpec{}
+	*impCopy = *ispec
+
+	switch {
+	case ispec.Path.Value == strconv.Quote(pkgerrosPath):
+		impCopy.Path = &ast.BasicLit{
+			ValuePos: ispec.Path.ValuePos,
+			Kind:     token.STRING,
+			Value:    strconv.Quote(errosPath),
+		}
+		// overrides impCopy.Path.Pos
+		impCopy.Path.Value = strconv.Quote(errosPath)
+
+		var buf bytes.Buffer
+		if err := format.Node(&buf, token.NewFileSet(), impCopy); err != nil {
+			return
+		}
+
+		textEdits := []analysis.TextEdit{
+			{
+				Pos:     ispec.Pos(),
+				End:     ispec.End(),
+				NewText: buf.Bytes(),
+			},
+			{
+				Pos:     ispec.Pos(),
+				End:     ispec.End(),
+				NewText: nil,
+			},
+		}
+		if imps[errosPath] {
+			// delete "github.com/pkg/errors" import if imported "errors" package
+			for i := range textEdits {
+				textEdits[i].NewText = nil
+			}
+		}
+
+		pass.Report(analysis.Diagnostic{
+			Pos:     ispec.Pos(),
+			End:     ispec.End(),
+			Message: fmt.Sprintf("found use %q package", pkgerrosPath),
+			SuggestedFixes: []analysis.SuggestedFix{
+				{
+					Message:   "Use fmt packace instead",
+					TextEdits: textEdits,
+				},
+			},
+		})
+	}
 }
 
 // isError reports whether the typ is an error type.
@@ -203,18 +277,22 @@ func vendorlessPath(ipath string) string {
 	return ipath
 }
 
-// verb assumes unquoted msg.
-func verb(msg string) string {
-	if strings.HasSuffix(msg, "%w") {
-		return msg
+// fixArgs fixes pkg/errors args to fmt.Errorf format.
+func fixArgs(exprs []ast.Expr) []ast.Expr {
+	msg := exprs[0]
+
+	lit, ok := msg.(*ast.BasicLit)
+	if !ok {
+		return exprs
 	}
 
-	return msg + ": %w"
-}
+	s := lit.Value
+	s = verb(unquote(s))
 
-// unquote assumes quoted s.
-func unquote(s string) string {
-	return s[1:len(s)-1] + ": %w" // skip first and last char
+	msg.(*ast.BasicLit).Value = strconv.Quote(s) // re-quoted
+	exprs[0] = msg
+
+	return exprs
 }
 
 // reorderArgs re-orders pkg/errors args to fmt.Errorf format.
@@ -225,8 +303,32 @@ func reorderArgs(exprs []ast.Expr) []ast.Expr {
 
 	// adds %w verb to the end of msg
 	s := msg.(*ast.BasicLit).Value
-	s = verb(unquote(s))
+	s = verb(unquote(s) + ": %w")
 	msg.(*ast.BasicLit).Value = strconv.Quote(s) // re-quoted
 
 	return append(append([]ast.Expr{msg}, args...), errStmt)
+}
+
+// verb assumes unquoted msg.
+func verb(msg string) string {
+	if strings.Contains(msg, `%w`) {
+		println("ignore:", msg)
+		return msg
+	}
+
+	if strings.Contains(msg, `%v`) {
+		println("replace:", msg)
+		return strings.ReplaceAll(msg, `%v`, `%w`)
+	}
+
+	return msg
+}
+
+// unquote assumes quoted s.
+func unquote(s string) string {
+	if s[0] == '"' && s[len(s)-1] == '"' {
+		s = s[1 : len(s)-1] // skip first and last char
+	}
+
+	return s
 }
