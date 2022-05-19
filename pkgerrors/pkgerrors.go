@@ -8,22 +8,27 @@ import (
 	"fmt"
 	"go/ast"
 	"go/format"
+	"go/token"
 	"go/types"
 	"strconv"
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/inspect"
+	"golang.org/x/tools/go/analysis/passes/pkgfact"
 	"golang.org/x/tools/go/ast/inspector"
 )
 
-const doc = `pkgerrors analyzer analyzes and rewrites the github.com/pkg/errors (that has been deprecated) to the fmt.Errorf with %%w verb provided after the go1.13.`
+const Doc = `pkgerrors analyzer analyzes and rewrites the github.com/pkg/errors (that has been deprecated) to the fmt.Errorf with %%w verb provided after the go1.13.`
 
 var Analyzer = &analysis.Analyzer{
-	Name:     "pkgerrors",
-	Doc:      doc,
-	Run:      run,
-	Requires: []*analysis.Analyzer{inspect.Analyzer},
+	Name: "pkgerrors",
+	Doc:  Doc,
+	Run:  run,
+	Requires: []*analysis.Analyzer{
+		pkgfact.Analyzer,
+		inspect.Analyzer,
+	},
 }
 
 const pkgerrosPath = "github.com/pkg/errors"
@@ -33,6 +38,7 @@ func run(pass *analysis.Pass) (interface{}, error) {
 	nodeFilter := []ast.Node{
 		(*ast.CallExpr)(nil), // filter only function expression
 	}
+
 	inspected.Preorder(nodeFilter, func(node ast.Node) {
 		call := node.(*ast.CallExpr)
 
@@ -75,7 +81,7 @@ func run(pass *analysis.Pass) (interface{}, error) {
 		}
 
 		var buf bytes.Buffer
-		if err := format.Node(&buf, pass.Fset, callCopy); err != nil {
+		if err := format.Node(&buf, token.NewFileSet(), callCopy); err != nil {
 			return
 		}
 
@@ -124,7 +130,7 @@ func isPkgErrorsCall(info *types.Info, call *ast.CallExpr) (string, bool) {
 }
 
 func isPkgErrorsFunc(obj types.Object) bool {
-	if obj.Pkg().Path() != pkgerrosPath {
+	if vendorlessPath(obj.Pkg().Path()) != pkgerrosPath {
 		return false
 	}
 
@@ -202,14 +208,6 @@ func verb(msg string) string {
 	if strings.HasSuffix(msg, "%w") {
 		return msg
 	}
-	// fmt.Printf("verb: %s\n", msg)
-	// if strings.HasSuffix(msg, "%v") {
-	// 	return strings.ReplaceAll(msg, "%v", "%w")
-	// }
-	// if msg[len(msg)-3:] == `%v` {
-	// 	fmt.Printf("verb: %s\n", msg[len(msg)-2:]+`%w`)
-	// 	return msg[len(msg)-2:] + `%w`
-	// }
 
 	return msg + ": %w"
 }
