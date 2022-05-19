@@ -2,7 +2,27 @@
 
 This analyzer rewrites the [github.com/pkg/errors](https://github.com/pkg/errors) (that has been deprecated) to the [fmt.Errorf](https://pkg.go.dev/fmt#Errorf) with `%w` verb provided after the go1.13.
 
-Support functions:
+### Installation
+
+```
+go install github.com/zchee/go-analyzer/pkgerrors/cmd/pkgerrors@latest
+```
+
+### Usage
+
+Find usages:
+
+```
+pkgerrors ./package/to/fix/
+```
+
+Fix findings:
+
+```
+pkgerrors -fix ./package/to/fix/
+```
+
+### Support functions
 
 - `github.com/pkg/errors.As(err error, target interface{}) bool`  
   - Replace to `errors.As(err error, target interface{}) bool`
