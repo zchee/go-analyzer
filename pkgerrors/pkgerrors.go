@@ -206,16 +206,24 @@ func vendorlessPath(ipath string) string {
 
 // verb assumes unquoted msg.
 func verb(msg string) string {
-	if strings.HasSuffix(msg, "%w") {
+	if strings.Contains(msg, `%w`) {
 		return msg
 	}
 
-	return msg + ": %w"
+	if strings.Contains(msg, `%v`) {
+		return strings.ReplaceAll(msg, `%v`, `%w`)
+	}
+
+	return msg
 }
 
 // unquote assumes quoted s.
 func unquote(s string) string {
-	return s[1:len(s)-1] + ": %w" // skip first and last char
+	if s[0] == '"' && s[len(s)-1] == '"' {
+		s = s[1 : len(s)-1] // skip first and last rune
+	}
+
+	return s
 }
 
 // reorderArgs re-orders pkg/errors args to fmt.Errorf format.
@@ -226,7 +234,7 @@ func reorderArgs(exprs []ast.Expr) []ast.Expr {
 
 	// adds %w verb to the end of msg
 	s := msg.(*ast.BasicLit).Value
-	s = verb(unquote(s))
+	verb(unquote(s) + ": %w")
 	msg.(*ast.BasicLit).Value = strconv.Quote(s) // re-quoted
 
 	return append(append([]ast.Expr{msg}, args...), errStmt)
