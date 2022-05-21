@@ -15,8 +15,9 @@ import (
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/inspect"
-	"golang.org/x/tools/go/analysis/passes/pkgfact"
 	"golang.org/x/tools/go/ast/inspector"
+
+	"github.com/zchee/go-analyzer/packagefact"
 )
 
 const Doc = `pkgerrors analyzer analyzes and rewrites the github.com/pkg/errors (that has been deprecated) to the fmt.Errorf with %%w verb provided after the go1.13.`
@@ -26,7 +27,7 @@ var Analyzer = &analysis.Analyzer{
 	Doc:  Doc,
 	Run:  run,
 	Requires: []*analysis.Analyzer{
-		pkgfact.Analyzer,
+		packagefact.Analyzer,
 		inspect.Analyzer,
 	},
 }
