@@ -70,6 +70,7 @@ func run(pass *analysis.Pass) (interface{}, error) {
 
 		case "Errorf": // errors.Errorf
 			callCopy.Fun.(*ast.SelectorExpr).X.(*ast.Ident).Name = "fmt"
+			callCopy.Args = fixArgs(call.Args)
 
 		case "WithStack": // errors.WithStack
 			// not supported
@@ -238,4 +239,15 @@ func reorderArgs(exprs []ast.Expr) []ast.Expr {
 	msg.(*ast.BasicLit).Value = strconv.Quote(s) // re-quoted
 
 	return append(append([]ast.Expr{msg}, args...), errStmt)
+}
+
+// fixArgs fixes pkg/errors args to fmt.Errorf format.
+func fixArgs(exprs []ast.Expr) []ast.Expr {
+	msg := exprs[0]
+	s := msg.(*ast.BasicLit).Value
+	s = verb(unquote(s))
+	msg.(*ast.BasicLit).Value = strconv.Quote(s) // re-quoted
+	exprs[0] = msg
+
+	return exprs
 }
