@@ -207,10 +207,6 @@ func vendorlessPath(ipath string) string {
 
 // verb assumes unquoted msg.
 func verb(msg string) string {
-	if strings.Contains(msg, `%w`) {
-		return msg
-	}
-
 	if strings.Contains(msg, `%v`) {
 		return strings.ReplaceAll(msg, `%v`, `%w`)
 	}
@@ -235,7 +231,7 @@ func reorderArgs(exprs []ast.Expr) []ast.Expr {
 
 	// adds %w verb to the end of msg
 	s := msg.(*ast.BasicLit).Value
-	verb(unquote(s) + ": %w")
+	s = verb(unquote(s) + ": %w")
 	msg.(*ast.BasicLit).Value = strconv.Quote(s) // re-quoted
 
 	return append(append([]ast.Expr{msg}, args...), errStmt)
