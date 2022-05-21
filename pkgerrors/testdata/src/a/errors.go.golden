@@ -3,7 +3,8 @@ package a
 import (
 	errorspkg "errors"
 	"fmt"
-	// want `found use "github.com/pkg/errors" package`
+
+	"github.com/pkg/errors" // ok TODO(zchee): support `found use "github.com/pkg/errors" package`
 )
 
 var _ = errorspkg.New
