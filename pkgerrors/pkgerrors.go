@@ -20,7 +20,7 @@ import (
 	"github.com/zchee/go-analyzer/packagefact"
 )
 
-const Doc = `pkgerrors analyzer analyzes and rewrites the github.com/pkg/errors (that has been deprecated) to the fmt.Errorf with %%w verb provided after the go1.13.`
+const Doc = `analyzes and rewrites the github.com/pkg/errors (that has been deprecated) to the fmt.Errorf with %%w verb provided after the go1.13.`
 
 var Analyzer = &analysis.Analyzer{
 	Name: "pkgerrors",
