@@ -89,7 +89,7 @@ func run(pass *analysis.Pass) (interface{}, error) {
 		pass.Report(analysis.Diagnostic{
 			Pos:      call.Pos(),
 			End:      call.End(),
-			Category: "???", // TODO(zchee): what is category?
+			Category: fnName,
 			Message:  fmt.Sprintf("found use location of the deprecated %s", pkgerrosPath),
 			SuggestedFixes: []analysis.SuggestedFix{{
 				Message: "Use fmt.Errorf with %%w verb instead",
