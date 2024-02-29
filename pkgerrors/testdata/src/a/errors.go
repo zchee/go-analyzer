@@ -96,6 +96,11 @@ func PkgErrorsWrap3() (any, struct{}, error) {
 	return nil, struct{}{}, errors.Wrap(cause, "oh noes") // want `found use location of the deprecated github.com/pkg/errors`
 }
 
+func PkgErrorsWrap4() (any, struct{}, error) {
+	cause := errors.New("whoops")
+	return nil, struct{}{}, errors.Wrap(cause, fmt.Sprintf("oh noes: %s", "yeah")) // want `found use location of the deprecated github.com/pkg/errors`
+}
+
 func PkgErrorsWrapf() error {
 	cause := errors.New("whoops")
 	return errors.Wrapf(cause, "oh noes #%d", 1) // want `found use location of the deprecated github.com/pkg/errors`
@@ -109,4 +114,9 @@ func PkgErrorsWrapf2() (any, error) {
 func PkgErrorsWrapf3() (any, struct{}, error) {
 	cause := errors.New("whoops")
 	return nil, struct{}{}, errors.Wrapf(cause, "oh noes #%d", 3) // want `found use location of the deprecated github.com/pkg/errors`
+}
+
+func PkgErrorsWrapf4() (any, struct{}, error) {
+	cause := errors.New("whoops")
+	return nil, struct{}{}, errors.Wrapf(cause, fmt.Sprintf("oh noes #%d", 3)) // want `found use location of the deprecated github.com/pkg/errors`
 }

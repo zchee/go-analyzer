@@ -238,6 +238,9 @@ func reorderArgs(exprs []ast.Expr) []ast.Expr {
 		if r.Fun.(*ast.SelectorExpr).Sel.Name == "Sprintf" {
 			s = r.Args[0].(*ast.BasicLit).Value
 		}
+		if len(r.Args) > 1 {
+			args = append(r.Args[1:], args...)
+		}
 	default:
 		panic(fmt.Sprintf("not sure what to do with type %T", msg))
 	}
