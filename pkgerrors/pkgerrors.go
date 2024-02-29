@@ -229,12 +229,24 @@ func reorderArgs(exprs []ast.Expr) []ast.Expr {
 	msg := exprs[1]
 	args := exprs[2:]
 
+	var s string
 	// adds %w verb to the end of msg
-	s := msg.(*ast.BasicLit).Value
+	switch r := msg.(type) {
+	case *ast.BasicLit:
+		s = r.Value
+	case *ast.CallExpr:
+		if r.Fun.(*ast.SelectorExpr).Sel.Name == "Sprintf" {
+			s = r.Args[0].(*ast.BasicLit).Value
+		}
+	default:
+		panic(fmt.Sprintf("not sure what to do with type %T", msg))
+	}
 	s = verb(unquote(s) + ": %w")
-	msg.(*ast.BasicLit).Value = strconv.Quote(s) // re-quoted
+	newMsg := &ast.BasicLit{
+		Value: strconv.Quote(s), // re-quoted
+	}
+	return append(append([]ast.Expr{newMsg}, args...), errStmt)
 
-	return append(append([]ast.Expr{msg}, args...), errStmt)
 }
 
 // fixArgs fixes pkg/errors args to fmt.Errorf format.
